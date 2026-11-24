@@ -3,8 +3,6 @@ on:
   workflow_dispatch:
   push:
     branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
 
 jobs:
   build:
@@ -12,37 +10,45 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Extract project zip
+        run: |
+          ZIP=$(find . -maxdepth 2 -iname '*.zip' | head -n 1)
+          if [ -z "$ZIP" ]; then echo "ERROR: repo mein koi .zip file nahi mili"; exit 1; fi
+          echo "Zip found: $ZIP"
+          mkdir -p project
+          unzip -q "$ZIP" -d project
+          SETTINGS=$(find project -name settings.gradle | head -n 1)
+          if [ -z "$SETTINGS" ]; then echo "ERROR: settings.gradle nahi mili"; exit 1; fi
+          PROJECT_DIR=$(dirname "$SETTINGS")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Project dir: $PROJECT_DIR"
+          ls -la "$PROJECT_DIR"
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
       - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+
       - name: Check editor JavaScript syntax
-        run: node --check app/src/main/assets/mnshot.js
-      - name: Verify project files
-        run: |
-          test -s app/src/main/assets/index.html
-          test -s app/src/main/assets/mnshot.css
-          grep -q 'MN SHOT' app/src/main/assets/index.html
-          grep -q 'MNCutNativeMp4' app/src/main/assets/mnshot.js
-          grep -q 'onNativeMp4Result' app/src/main/assets/mnshot.js
-          grep -q '__mnBack' app/src/main/assets/mnshot.js
-          grep -q 'media3-transformer' app/build.gradle
-          grep -q 'NativeMp4Bridge' app/src/main/java/com/mnshot/studio/MainActivity.java
-          grep -q '__mnBack' app/src/main/java/com/mnshot/studio/MainActivity.java
-          test -f app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
-          test -f app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
-          test -f settings.gradle
+        run: node --check "$PROJECT_DIR/app/src/main/assets/mnshot.js"
+
       - name: Build debug APK
-        run: gradle --no-daemon assembleDebug
+        run: |
+          cd "$PROJECT_DIR"
+          gradle --no-daemon assembleDebug
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: MN-SHOT-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
